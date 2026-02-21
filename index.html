@@ -14,16 +14,21 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
+    width: 100vw;
     height: 100vh;
+    height: 100dvh; /* dynamic viewport for mobile browsers */
     overflow: hidden;
     color: #00ff88;
+    position: fixed;
+    top: 0; left: 0;
+    touch-action: none;
   }
   #gameWrapper {
     position: relative;
     width: 100vw;
     height: 100vh;
+    height: 100dvh;
     max-width: 600px;
-    max-height: 900px;
   }
   canvas {
     display: block;
@@ -151,48 +156,52 @@
   @keyframes hov { from { transform: translateY(0); } to { transform: translateY(-8px); } }
   #mobileControls {
     position: absolute;
-    bottom: 14px;
+    bottom: env(safe-area-inset-bottom, 16px);
+    bottom: max(env(safe-area-inset-bottom, 0px), 16px);
     left: 0; right: 0;
     display: none;
     justify-content: space-between;
-    padding: 0 20px;
+    align-items: center;
+    padding: 0 24px;
     z-index: 15;
     pointer-events: none;
   }
   .ctrl-btn {
-    width: 62px; height: 62px;
-    background: rgba(0,255,136,0.12);
-    border: 1px solid rgba(0,255,136,0.3);
+    width: 72px; height: 72px;
+    background: rgba(0,255,136,0.14);
+    border: 1.5px solid rgba(0,255,136,0.4);
     border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    font-size: 1.3rem;
+    font-size: 1.6rem;
     cursor: pointer;
     pointer-events: all;
     user-select: none;
     -webkit-tap-highlight-color: transparent;
+    touch-action: none;
+    transition: background 0.1s;
   }
-  .ctrl-btn:active { background: rgba(0,255,136,0.3); }
-  @media (max-width: 768px), (pointer: coarse) { #mobileControls { display: flex; } }
+  .ctrl-btn:active, .ctrl-btn.pressed { background: rgba(0,255,136,0.35); }
+  @media (pointer: coarse), (max-width: 768px) { #mobileControls { display: flex; } }
 
   @media (max-width: 480px) {
-    body { justify-content: flex-start; }
-    #gameWrapper { max-width: 100vw; max-height: 100vh; }
-    .hud-item { font-size: 0.48rem; }
-    .hud-val { font-size: 0.75rem; }
-    #sectionBanner { font-size: 0.82rem !important; }
-    .screen { padding: 1rem; }
+    #gameWrapper { max-width: 100vw; }
+    .hud-item { font-size: 0.5rem; }
+    .hud-val { font-size: 0.78rem; }
+    #sectionBanner { font-size: 0.85rem !important; }
+    .screen { padding: 0.8rem 1rem; overflow-y: auto; }
     .screen-title { font-size: 1.05rem !important; }
-    .screen-sub { font-size: 0.62rem !important; }
-    .journey-map { font-size: 0.58rem; padding: 0.5rem 0.7rem; line-height: 1.7; }
-    .btn { font-size: 0.68rem; padding: 0.55rem 1.3rem; margin-top: 0.5rem; }
-    .win-section { font-size: 0.6rem; }
-    .drone-emoji { font-size: 2rem; margin-bottom: 0.5rem; }
-    .ctrl-btn { width: 65px; height: 65px; font-size: 1.5rem; }
+    .screen-sub { font-size: 0.62rem !important; margin-bottom: 0.5rem; }
+    .journey-map { font-size: 0.58rem; padding: 0.5rem 0.7rem; line-height: 1.6; margin: 0.4rem 0; }
+    .btn { font-size: 0.7rem; padding: 0.6rem 1.4rem; margin-top: 0.5rem; }
+    .win-section { font-size: 0.62rem; margin: 0.15rem 0; }
+    .drone-emoji { font-size: 1.8rem; margin-bottom: 0.4rem; }
+    .ctrl-btn { width: 75px; height: 75px; font-size: 1.7rem; }
     #progressBar { height: 5px; }
   }
   @media (max-width: 380px) {
-    .journey-map { font-size: 0.54rem; }
-    .screen-title { font-size: 0.95rem !important; }
+    .journey-map { font-size: 0.54rem; line-height: 1.5; }
+    .screen-title { font-size: 0.92rem !important; }
+    .ctrl-btn { width: 68px; height: 68px; }
   }
 
   .scanline {
@@ -273,11 +282,17 @@ const ctx = canvas.getContext('2d');
 
 function resize() {
   const w = document.getElementById('gameWrapper');
-  canvas.width = w.clientWidth;
-  canvas.height = w.clientHeight;
+  canvas.width = w.clientWidth || window.innerWidth;
+  canvas.height = w.clientHeight || window.innerHeight;
 }
 resize();
 window.addEventListener('resize', resize);
+// Handle Android orientation change
+window.addEventListener('orientationchange', () => setTimeout(resize, 200));
+// Handle Android address bar showing/hiding
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', resize);
+}
 
 // ─── COLON SECTIONS ───────────────────────────────────────────────────
 // Each section has: name, length (frames), color theme, gap behavior, curvature, description
@@ -401,11 +416,31 @@ document.addEventListener('keyup', e => { keys[e.key] = false; });
 ['upBtn','downBtn'].forEach(id => {
   const el = document.getElementById(id);
   const isUp = id === 'upBtn';
-  ['touchstart','mousedown'].forEach(ev =>
-    el.addEventListener(ev, e => { e.preventDefault(); isUp ? touchUp=true : touchDown=true; }, {passive:false}));
-  ['touchend','mouseup','mouseleave'].forEach(ev =>
-    el.addEventListener(ev, e => { e.preventDefault(); isUp ? touchUp=false : touchDown=false; }, {passive:false}));
+  const setOn = () => { el.classList.add('pressed'); isUp ? touchUp=true : touchDown=true; };
+  const setOff = () => { el.classList.remove('pressed'); isUp ? touchUp=false : touchDown=false; };
+  el.addEventListener('touchstart', e => { e.preventDefault(); setOn(); }, {passive:false});
+  el.addEventListener('touchend',   e => { e.preventDefault(); setOff(); }, {passive:false});
+  el.addEventListener('touchcancel',e => { e.preventDefault(); setOff(); }, {passive:false});
+  el.addEventListener('mousedown',  e => { e.preventDefault(); setOn(); });
+  el.addEventListener('mouseup',    e => { e.preventDefault(); setOff(); });
+  el.addEventListener('mouseleave', e => { setOff(); });
 });
+
+// Also allow tapping anywhere on left/right half of screen as controls
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  Array.from(e.touches).forEach(t => {
+    if (t.clientX < canvas.getBoundingClientRect().width * 0.5) touchUp = true;
+    else touchDown = true;
+  });
+}, {passive:false});
+canvas.addEventListener('touchend', e => {
+  e.preventDefault();
+  touchUp = false; touchDown = false;
+}, {passive:false});
+canvas.addEventListener('touchcancel', e => {
+  touchUp = false; touchDown = false;
+}, {passive:false});
 
 function currentSection() { return SECTIONS[sectionIdx]; }
 
